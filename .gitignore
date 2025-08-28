@@ -1,0 +1,39 @@
+# 🔧 MPLAB X 編譯產物
+/build/
+/debug/
+/dist/
+
+# 🧠 MPLAB X 專案設定（可選）
+/nbproject/private/
+/nbproject/Makefile-local-*.mk
+
+# 🐾 其他自動生成或快取
+*.log
+*.o
+*.obj
+*.elf
+#*.hex
+*.cof
+*.as
+#*.lst
+*.map
+*.sym
+*.err
+*.d
+*.dep
+
+# ⚙️ DS_store / OS metadata（for macOS）
+.DS_Store
+
+# 👻 一般臨時檔
+*.bak
+*~
+
+# 快取和臨時檔案
+*.cache
+*.tmp
+*.log
+
+# 本地個人檔案
+.private/
+.vscode/

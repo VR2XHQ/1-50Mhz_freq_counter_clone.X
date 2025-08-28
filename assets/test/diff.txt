@@ -1,0 +1,60 @@
+beny@Klevv-R1:~/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/test$ pk2cmd -PPIC16F628A -Fcounter2.hex -Y
+PICkit 2 Verify Report
+26-8-2025, 13:45:19
+Device Type: PIC16F628A
+
+EEData Memory Errors
+
+Address   Good     Bad
+000013    0000D3   00000D
+
+
+beny@Klevv-R1:~/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/test$ file counter2.hex
+counter2.hex: ASCII text, with CRLF line terminators
+
+beny@Klevv-R1:~/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/test$ dos2unix counter2.hex 
+dos2unix: converting file counter2.hex to Unix format...
+
+beny@Klevv-R1:~/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/test$ diff -u counter_clone.hex counter2.hex 
+--- counter_clone.hex	2025-08-26 01:10:21.877219476 +0800
++++ counter2.hex	2025-08-26 14:03:15.289149659 +0800
+@@ -109,12 +109,10 @@
+ :1006B0005B283C08053C0319612B031C632BBC0A17
+ :1006C000482BBC01482B3C080A3C03196B2B031C2C
+ :1006D0006E2BBC0A482B0630BC00482BBC01482BB3
++:084000000100020003000400AE
++:02400E00063F6B
+ :10420000000000000000000000000600F10058005F
+ :1042100000003D0005001800000040000000000004
+-:1042200000004300A6000D000000A3004400E000D1
++:1042200000004300A600D3000000A3004400E0000B
+ :0242400000007C
+-:02400E00063F6B
+-:084000000100020003000400AE
+ :00000001FF
+-;PIC16F628A
+-;Exported from pk2cmd 1.27.01
+
+
+beny@Klevv-R1:~/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/test$ diff -u counter_clone.asm counter2.asm
+--- counter_clone.asm	2025-08-26 13:34:16.347430005 +0800
++++ counter2.asm	2025-08-26 13:37:36.230363282 +0800
+@@ -921,7 +921,7 @@
+ 2123:  00    db      0x00
+ 2124:  a6    db      0xa6
+ 2125:  00    db      0x00
+-2126:  0d    db      0x0d
++2126:  d3    db      0xd3
+ 2127:  00    db      0x00
+ 2128:  00    db      0x00
+ 2129:  00    db      0x00
+
+
+IF_table offest in hexadecimal
+  455000 ==> 0x 06 F1 58
+ 3999000 ==> 0x 3D 05 18
+ 4194304 ==> 0x 40 00 00
+ 4433619 ==> 0x 43 A6 D3
+ 4433421 ==> 0x 43 A6 0D  (chinese clone)
+10700000 ==> 0x A3 44 E0
+10695000 ==> 0x A3 31 58

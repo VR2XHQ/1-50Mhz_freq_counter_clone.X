@@ -1,0 +1,1341 @@
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  1
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00001 ;**************************************************************************
+                      00002 ; FILE:      frqmeter.asm                                                 *
+                      00003 ; CONTENTS:  Simple low-cost digital frequency meter using a PIC 16C54    *
+                      00004 ; COPYRIGHT: MadLab Ltd. 1996-2003                                        *
+                      00005 ; AUTHOR:    James Hutchby                                                *
+                      00006 ; UPDATED:   01/12/03                                                     *
+                      00007 ;**************************************************************************
+                      00008 
+                      00009      list p=16C54
+                      00010 
+                      00011      include "p16c5x.inc"
+                      00001         LIST
+                      00002 ; P16C5X.INC  Standard Header File, Version 4.00    Microchip Technology, Inc.
+                      00324         LIST
+                      00012 
+0FFF   0FF6           00013      __config _HS_OSC & _WDT_ON & _CP_ON
+                      00014 
+0200   000B 000A 0001 00015      __idlocs h'BA10'
+       0000           
+                      00016 
+                      00017      errorlevel -305
+                      00018 
+                      00019 
+                      00020 ;**************************************************************************
+                      00021 ;                                                                         *
+                      00022 ; Summary                                                                 *
+                      00023 ;                                                                         *
+                      00024 ;**************************************************************************
+                      00025 
+                      00026 ; The following software functions as a frequency meter with an input signal
+                      00027 ; range of 15Hz to ~ 8MHz and with an accuracy of +/- 1Hz.
+                      00028 
+                      00029 ; Signal pulses are counted over a fixed time interval of 1/8 second or
+                      00030 ; 1 second. High frequency pulses are counted over 1/8 s to make the meter
+                      00031 ; more responsive with no loss of displayed accuracy.
+                      00032 
+                      00033 ; Pulses are counted using the real time clock/counter (RTCC) of the PIC,
+                      00034 ; which is set to increment on rising edges on the RTCC pin. The 8-bit
+                      00035 ; hardware register is extended by software into a 24-bit pulse counter.
+                      00036 ; If the RTCC rolls over (msb 1 -> 0) between successive polls then the
+                      00037 ; high two bytes of the pulse counter are incremented.
+                      00038 
+                      00039 ; The RTCC is unable to count more than one pulse per instruction cycle
+                      00040 ; (per 4 clock cycles) so the prescaler is used at frequencies above
+                      00041 ; 5MHz (20MHz clock / 4) and also to ensure that pulses are not lost
+                      00042 ; between polls of RTCC (which would happen if more than 128 pulses were
+                      00043 ; received).
+                      00044 
+                      00045 ; Timing is based on a software loop of known execution period which is
+                      00046 ; iterated using a 16-bit loop counter. The loop duration is 20 us which
+                      00047 ; gives integer iteration counts to time 1 s (50 000) and 1/8 s (6 250).
+                      00048 
+                      00049 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  2
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00050 ; The frequency in binary is converted to decimal using a powers-of-ten
+                      00051 ; lookup table. The binary powers of ten are repeatedly subtracted from
+                      00052 ; the frequency to determine the individual decimal digits. The decimal
+                      00053 ; digits are stored at the 7 bytes at 'digits'. Leading zeroes are then
+                      00054 ; suppressed and the four significant digits are converted to LED data
+                      00055 ; for the 7-segment displays using individual lookup tables.
+                      00056 
+                      00057 
+                      00058 ; The signal frequency is displayed on four 7-segment displays. The displays
+                      00059 ; are multiplexed which means that only one display is enabled at any one
+                      00060 ; time. The variable 'disp_index' contains the index of the currently
+                      00061 ; enabled display. Each display is enabled in turn at a sufficient frequency
+                      00062 ; that no flicker is discernable. A 5-bit prescaler ('disp_timer') is used
+                      00063 ; to set the multiplexing frequency to around 1KHz.
+                      00064 
+                      00065 
+                      00066 ; The display always shows the signal frequency in KHz, according to the
+                      00067 ; following table:
+                      00068 
+                      00069 ; -----------------------
+                      00070 ; | Frequency | Display |
+                      00071 ; -----------------------
+                      00072 ; | < 1Hz     |       0 |
+                      00073 ; | 1Hz       |   0.001 |
+                      00074 ; | 10Hz      |   0.010 |
+                      00075 ; | 100Hz     |   0.100 |
+                      00076 ; | 1.000KHz  |   1.000 |
+                      00077 ; | 10.00KHz  |   10.00 |
+                      00078 ; | 100.0KHz  |   100.0 |
+                      00079 ; | 1.000MHz  |   1000. |
+                      00080 ; | > 8MHz    |       E |
+                      00081 ; -----------------------
+                      00082 
+                      00083 ; Underflows (frequencies less than 1Hz) or no signal at all are displayed
+                      00084 ; as a single zero, and overflows (frequencies greater than 8MHz) are
+                      00085 ; displayed as the letter 'E' (for error).
+                      00086 
+                      00087 
+                      00088 ; Use is made of the indirection register of the PIC (FSR). This is set to
+                      00089 ; point to a register in the register file which is then accessed using the
+                      00090 ; dummy register address of 0.
+                      00091 
+                      00092 ; A pecularity of the PIC's instruction set should be noted. The subtraction
+                      00093 ; instruction (subwf) does not behave as one would expect. Specifically the
+                      00094 ; carry flag is complemented. In other words a subtraction that underflows
+                      00095 ; clears the carry flag rather than sets it. This should be borne in mind
+                      00096 ; when studying the multi-byte arithmetic macros that involve subtraction.
+                      00097 
+                      00098 
+                      00099 ;**************************************************************************
+                      00100 ;                                                                         *
+                      00101 ; Port assignments                                                        *
+                      00102 ;                                                                         *
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  3
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00103 ;**************************************************************************
+                      00104 
+  00000000            00105 PORTA_IO       equ  b'0000'        ; port A I/O mode (all output)
+  00000000            00106 PORTB_IO       equ  b'00000000'    ; port B I/O mode (all output)
+                      00107 
+  00000006            00108 LEDS_PORT      equ  PORTB          ; 7-segment LEDs port
+                      00109 
+  00000005            00110 ENABLE_PORT    equ  PORTA          ; display enable port
+  00000001            00111 ENABLE0        equ  1              ; display #0 enable bit (0 = enable)
+  00000000            00112 ENABLE1        equ  0              ; display #1 enable bit (0 = enable)
+  00000002            00113 ENABLE2        equ  2              ; display #2 enable bit (0 = enable)
+  00000003            00114 ENABLE3        equ  3              ; display #3 enable bit (0 = enable)
+                      00115 
+                      00116 
+                      00117 ;**************************************************************************
+                      00118 ;                                                                         *
+                      00119 ; Constants and timings                                                   *
+                      00120 ;                                                                         *
+                      00121 ;**************************************************************************
+                      00122 
+                      00123 ; processor clock frequency in Hz (20MHz)
+  01312D00            00124 CLOCK     equ  d'20000000'
+                      00125 
+                      00126 ; microseconds per timing loop
+  00000014            00127 TIME      equ  d'20'
+                      00128 
+                      00129 ; clock cycles per timing loop
+  00000190            00130 CYCLES    equ  TIME*CLOCK/d'1000000'
+                      00131 
+                      00132 
+                      00133 ;**************************************************************************
+                      00134 ;                                                                         *
+                      00135 ; File register usage                                                     *
+                      00136 ;                                                                         *
+                      00137 ;**************************************************************************
+                      00138 
+                      00139      cblock h'07'
+  0000001E            00140 
+  00000007            00141      tens_index               ; index into the powers-of-ten table
+  00000008            00142      divi:3                   ; power of ten (24 bits)
+  00000008            00143 
+  0000000B            00144      TMR0_                    ; previous RTCC
+  0000000B            00145 
+  0000000C            00146      counter:2                ; 16-bit counter (msb first)
+  0000000E            00147      delay                    ; delay loop counter
+  0000000E            00148 
+  0000000F            00149      freq:3                   ; frequency in binary (24 bits)
+  00000012            00150      digits:7                 ; frequency as decimal digits (7 bytes)
+  00000012            00151 
+  00000019            00152      display0                 ; display #0 data
+  0000001A            00153      display1                 ; display #1 data
+  0000001B            00154      display2                 ; display #2 data
+  0000001C            00155      display3                 ; display #3 data
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  4
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+  0000001C            00156 
+  0000001D            00157      disp_index               ; index of the enabled display (0 to 3)
+  0000001E            00158      disp_timer               ; display timer (5 bits)
+  0000001E            00159 
+                      00160      endc
+                      00161 
+                      00162 
+                      00163 ;**************************************************************************
+                      00164 ;                                                                         *
+                      00165 ; Macros                                                                  *
+                      00166 ;                                                                         *
+                      00167 ;**************************************************************************
+                      00168 
+                      00169 routine   macro label              ; routine
+0000                  00170 label
+                      00171           endm
+                      00172 
+                      00173 
+                      00174 ;--------------------------------------------------------------------------
+                      00175 ; macros to implement lookup tables - these macros hide the PIC syntax
+                      00176 ; used and make the source code more readable
+                      00177 ;--------------------------------------------------------------------------
+                      00178 
+                      00179 table     macro label              ; define lookup table
+0000                  00180 label     addwf PCL
+                      00181           endm
+                      00182 
+                      00183 entry     macro value              ; define table entry
+                      00184           retlw value
+                      00185           endm
+                      00186 
+                      00187 index     macro label              ; index lookup table
+                      00188           call label
+                      00189           endm
+                      00190 
+                      00191 
+                      00192 ;--------------------------------------------------------------------------
+                      00193 ; add with carry - adds the w register and the carry flag to the file
+                      00194 ; register f, returns the result in f with the carry flag set if overflow
+                      00195 ;--------------------------------------------------------------------------
+                      00196 
+                      00197 addcwf    macro f
+                      00198 
+                      00199           local add1,add2
+                      00200 
+                      00201           bnc add1                      ; branch if no carry set
+                      00202 
+                      00203           addwf f                       ; add byte
+                      00204 
+                      00205           incf f                        ; add carry
+                      00206           skpnz
+                      00207           setc
+                      00208 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  5
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00209           goto add2
+                      00210 
+0000                  00211 add1      addwf f                       ; add byte
+                      00212 
+0000                  00213 add2
+                      00214           endm
+                      00215 
+                      00216 
+                      00217 ;--------------------------------------------------------------------------
+                      00218 ; subtract with no carry - subtracts the w register and the no carry flag
+                      00219 ; from the file register f, returns the result in f with the no carry flag
+                      00220 ; set if underflow
+                      00221 ;--------------------------------------------------------------------------
+                      00222 
+                      00223 subncwf   macro f
+                      00224 
+                      00225           local sub1,sub2
+                      00226 
+                      00227           bc sub1                       ; branch if carry set
+                      00228 
+                      00229           subwf f                       ; subtract byte
+                      00230 
+                      00231           skpnz                         ; subtract no carry
+                      00232           clrc
+                      00233           decf f
+                      00234 
+                      00235           goto sub2
+                      00236 
+0000                  00237 sub1      subwf f                       ; subtract byte
+                      00238 
+0000                  00239 sub2
+                      00240           endm
+                      00241 
+                      00242 
+                      00243 ;--------------------------------------------------------------------------
+                      00244 ; macro to perform 24-bit addition - adds the three bytes at op2 to the
+                      00245 ; three bytes at op1 (most significant bytes first), returns the result in
+                      00246 ; op1 with op2 unchanged and the carry flag set if overflow
+                      00247 ;--------------------------------------------------------------------------
+                      00248 
+                      00249 add24     macro op1,op2                 ; op1 <= op1 + op2
+                      00250 
+                      00251           movfw op2+2                   ; add low byte
+                      00252           addwf op1+2
+                      00253 
+                      00254           movfw op2+1                   ; add middle byte
+                      00255           addcwf op1+1
+                      00256 
+                      00257           movfw op2+0                   ; add high byte
+                      00258           addcwf op1+0
+                      00259 
+                      00260           endm
+                      00261 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  6
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00262 
+                      00263 ;--------------------------------------------------------------------------
+                      00264 ; macro to perform 24-bit subtraction - subtracts the three bytes at op2
+                      00265 ; from the three bytes at op1 (most significant bytes first), returns the
+                      00266 ; result in op1 with op2 unchanged and the no carry flag set if underflow
+                      00267 ;--------------------------------------------------------------------------
+                      00268 
+                      00269 sub24     macro op1,op2                 ; op1 <= op1 - op2
+                      00270 
+                      00271           movfw op2+2                   ; subtract low byte
+                      00272           subwf op1+2
+                      00273 
+                      00274           movfw op2+1                   ; subtract middle byte
+                      00275           subncwf op1+1
+                      00276 
+                      00277           movfw op2+0                   ; subtract high byte
+                      00278           subncwf op1+0
+                      00279 
+                      00280           endm
+                      00281 
+                      00282 
+0000                  00283           org 0
+                      00284 
+                      00285 
+                      00286 ;**************************************************************************
+                      00287 ;                                                                         *
+                      00288 ; Lookup tables                                                           *
+                      00289 ;                                                                         *
+                      00290 ;**************************************************************************
+                      00291 
+                      00292 ;--------------------------------------------------------------------------
+                      00293 ; 7-segment LED data tables (note: each 7-segment display has a separate
+                      00294 ; table because of the way the pcb is designed)
+                      00295 ;--------------------------------------------------------------------------
+                      00296 
+  0000000A            00297 BLANK     equ  d'10'               ; blank display
+  0000000B            00298 ERR       equ  d'11'               ; indicates overflow
+  0000000C            00299 TEST      equ  d'12'               ; power-on display test
+                      00300 
+  00000007            00301 DP0       equ  7                   ; display #0 decimal point bit
+  00000000            00302 DP1       equ  0                   ; display #1 decimal point bit
+  00000007            00303 DP2       equ  7                   ; display #2 decimal point bit
+  00000000            00304 DP3       equ  0                   ; display #3 decimal point bit
+                      00305 
+                      00306 
+                      00307           table LEDS0
+0000   01E2               M LEDS0     addwf PCL
+                      00308 
+                      00309 ; A = 2, B = 3, C = 6, D = 5, E = 4, F = 0, G = 1, DP = 7
+                      00310 
+                      00311           entry b'01111101'        ; ABCDEF. = '0'
+0001   087D               M           retlw b'01111101'
+                      00312           entry b'01001000'        ; .BC.... = '1'
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  7
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+0002   0848               M           retlw b'01001000'
+                      00313           entry b'00111110'        ; AB.DE.G = '2'
+0003   083E               M           retlw b'00111110'
+                      00314           entry b'01101110'        ; ABCD..G = '3'
+0004   086E               M           retlw b'01101110'
+                      00315           entry b'01001011'        ; .BC..FG = '4'
+0005   084B               M           retlw b'01001011'
+                      00316           entry b'01100111'        ; A.CD.FG = '5'
+0006   0867               M           retlw b'01100111'
+                      00317           entry b'01110011'        ; ..CDEFG = '6'
+0007   0873               M           retlw b'01110011'
+                      00318           entry b'01001100'        ; ABC.... = '7'
+0008   084C               M           retlw b'01001100'
+                      00319           entry b'01111111'        ; ABCDEFG = '8'
+0009   087F               M           retlw b'01111111'
+                      00320           entry b'01001111'        ; ABC..FG = '9'
+000A   084F               M           retlw b'01001111'
+                      00321 
+                      00322           entry b'00000000'        ; ....... = ' '
+000B   0800               M           retlw b'00000000'
+                      00323           entry b'00110111'        ; A..DEFG = 'E'
+000C   0837               M           retlw b'00110111'
+                      00324           entry b'11111111'        ; all segments on
+000D   08FF               M           retlw b'11111111'
+                      00325 
+                      00326 
+                      00327           table LEDS1
+000E   01E2               M LEDS1     addwf PCL
+                      00328 
+                      00329 ; A = 2, B = 1, C = 4, D = 6, E = 7, F = 3, G = 5, DP = 0
+                      00330 
+                      00331           entry b'11011110'        ; ABCDEF. = '0'
+000F   08DE               M           retlw b'11011110'
+                      00332           entry b'00010010'        ; .BC.... = '1'
+0010   0812               M           retlw b'00010010'
+                      00333           entry b'11100110'        ; AB.DE.G = '2'
+0011   08E6               M           retlw b'11100110'
+                      00334           entry b'01110110'        ; ABCD..G = '3'
+0012   0876               M           retlw b'01110110'
+                      00335           entry b'00111010'        ; .BC..FG = '4'
+0013   083A               M           retlw b'00111010'
+                      00336           entry b'01111100'        ; A.CD.FG = '5'
+0014   087C               M           retlw b'01111100'
+                      00337           entry b'11111000'        ; ..CDEFG = '6'
+0015   08F8               M           retlw b'11111000'
+                      00338           entry b'00010110'        ; ABC.... = '7'
+0016   0816               M           retlw b'00010110'
+                      00339           entry b'11111110'        ; ABCDEFG = '8'
+0017   08FE               M           retlw b'11111110'
+                      00340           entry b'00111110'        ; ABC..FG = '9'
+0018   083E               M           retlw b'00111110'
+                      00341 
+                      00342           entry b'00000000'        ; ....... = ' '
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  8
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+0019   0800               M           retlw b'00000000'
+                      00343           entry b'11101100'        ; A..DEFG = 'E'
+001A   08EC               M           retlw b'11101100'
+                      00344           entry b'11111111'        ; all segments on
+001B   08FF               M           retlw b'11111111'
+                      00345 
+                      00346 
+                      00347           table LEDS2
+001C   01E2               M LEDS2     addwf PCL
+                      00348 
+                      00349 ; A = 2, B = 3, C = 6, D = 5, E = 4, F = 0, G = 1, DP = 7
+                      00350 
+                      00351           entry b'01111101'        ; ABCDEF. = '0'
+001D   087D               M           retlw b'01111101'
+                      00352           entry b'01001000'        ; .BC.... = '1'
+001E   0848               M           retlw b'01001000'
+                      00353           entry b'00111110'        ; AB.DE.G = '2'
+001F   083E               M           retlw b'00111110'
+                      00354           entry b'01101110'        ; ABCD..G = '3'
+0020   086E               M           retlw b'01101110'
+                      00355           entry b'01001011'        ; .BC..FG = '4'
+0021   084B               M           retlw b'01001011'
+                      00356           entry b'01100111'        ; A.CD.FG = '5'
+0022   0867               M           retlw b'01100111'
+                      00357           entry b'01110011'        ; ..CDEFG = '6'
+0023   0873               M           retlw b'01110011'
+                      00358           entry b'01001100'        ; ABC.... = '7'
+0024   084C               M           retlw b'01001100'
+                      00359           entry b'01111111'        ; ABCDEFG = '8'
+0025   087F               M           retlw b'01111111'
+                      00360           entry b'01001111'        ; ABC..FG = '9'
+0026   084F               M           retlw b'01001111'
+                      00361 
+                      00362           entry b'00000000'        ; ....... = ' '
+0027   0800               M           retlw b'00000000'
+                      00363           entry b'00110111'        ; A..DEFG = 'E'
+0028   0837               M           retlw b'00110111'
+                      00364           entry b'11111111'        ; all segments on
+0029   08FF               M           retlw b'11111111'
+                      00365 
+                      00366 
+                      00367           table LEDS3
+002A   01E2               M LEDS3     addwf PCL
+                      00368 
+                      00369 ; A = 2, B = 1, C = 4, D = 6, E = 7, F = 3, G = 5, DP = 0
+                      00370 
+                      00371           entry b'11011110'        ; ABCDEF. = '0'
+002B   08DE               M           retlw b'11011110'
+                      00372           entry b'00010010'        ; .BC.... = '1'
+002C   0812               M           retlw b'00010010'
+                      00373           entry b'11100110'        ; AB.DE.G = '2'
+002D   08E6               M           retlw b'11100110'
+                      00374           entry b'01110110'        ; ABCD..G = '3'
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE  9
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+002E   0876               M           retlw b'01110110'
+                      00375           entry b'00111010'        ; .BC..FG = '4'
+002F   083A               M           retlw b'00111010'
+                      00376           entry b'01111100'        ; A.CD.FG = '5'
+0030   087C               M           retlw b'01111100'
+                      00377           entry b'11111000'        ; ..CDEFG = '6'
+0031   08F8               M           retlw b'11111000'
+                      00378           entry b'00010110'        ; ABC.... = '7'
+0032   0816               M           retlw b'00010110'
+                      00379           entry b'11111110'        ; ABCDEFG = '8'
+0033   08FE               M           retlw b'11111110'
+                      00380           entry b'00111110'        ; ABC..FG = '9'
+0034   083E               M           retlw b'00111110'
+                      00381 
+                      00382           entry b'00000000'        ; ....... = ' '
+0035   0800               M           retlw b'00000000'
+                      00383           entry b'11101100'        ; A..DEFG = 'E'
+0036   08EC               M           retlw b'11101100'
+                      00384           entry b'11111111'        ; all segments on
+0037   08FF               M           retlw b'11111111'
+                      00385 
+                      00386 
+                      00387 ;--------------------------------------------------------------------------
+                      00388 ; table to control which 7-segment display is enabled (displays are common
+                      00389 ; cathode so pulled low to enable)
+                      00390 ;--------------------------------------------------------------------------
+                      00391 
+                      00392           table enable_table
+0038   01E2               M enable_table     addwf PCL
+                      00393 
+                      00394           entry b'1111'-(1<<ENABLE0)
+0039   080D               M           retlw b'1111'-(1<<ENABLE0)
+                      00395           entry b'1111'-(1<<ENABLE1)
+003A   080E               M           retlw b'1111'-(1<<ENABLE1)
+                      00396           entry b'1111'-(1<<ENABLE2)
+003B   080B               M           retlw b'1111'-(1<<ENABLE2)
+                      00397           entry b'1111'-(1<<ENABLE3)
+003C   0807               M           retlw b'1111'-(1<<ENABLE3)
+                      00398 
+                      00399 
+                      00400 ;--------------------------------------------------------------------------
+                      00401 ; powers-of-ten table (24 bits, most significant byte first)
+                      00402 ;--------------------------------------------------------------------------
+                      00403 
+                      00404           table tens_table
+003D   01E2               M tens_table     addwf PCL
+                      00405 
+                      00406 power     macro value
+                      00407 
+                      00408           entry value>>d'16'            ; high byte
+                      00409           entry (value>>8)&h'ff'        ; middle byte
+                      00410           entry value&h'ff'             ; low byte
+                      00411 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 10
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00412           endm
+                      00413 
+                      00414           power d'1000000'
+                          M 
+                          M           entry d'1000000'>>d'16'            ; high byte
+003E   080F               M           retlw d'1000000'>>d'16'
+                          M           entry (d'1000000'>>8)&h'ff'        ; middle byte
+003F   0842               M           retlw (d'1000000'>>8)&h'ff'
+                          M           entry d'1000000'&h'ff'             ; low byte
+0040   0840               M           retlw d'1000000'&h'ff'
+                          M 
+                      00415           power d'100000'
+                          M 
+                          M           entry d'100000'>>d'16'            ; high byte
+0041   0801               M           retlw d'100000'>>d'16'
+                          M           entry (d'100000'>>8)&h'ff'        ; middle byte
+0042   0886               M           retlw (d'100000'>>8)&h'ff'
+                          M           entry d'100000'&h'ff'             ; low byte
+0043   08A0               M           retlw d'100000'&h'ff'
+                          M 
+                      00416           power d'10000'
+                          M 
+                          M           entry d'10000'>>d'16'            ; high byte
+0044   0800               M           retlw d'10000'>>d'16'
+                          M           entry (d'10000'>>8)&h'ff'        ; middle byte
+0045   0827               M           retlw (d'10000'>>8)&h'ff'
+                          M           entry d'10000'&h'ff'             ; low byte
+0046   0810               M           retlw d'10000'&h'ff'
+                          M 
+                      00417           power d'1000'
+                          M 
+                          M           entry d'1000'>>d'16'            ; high byte
+0047   0800               M           retlw d'1000'>>d'16'
+                          M           entry (d'1000'>>8)&h'ff'        ; middle byte
+0048   0803               M           retlw (d'1000'>>8)&h'ff'
+                          M           entry d'1000'&h'ff'             ; low byte
+0049   08E8               M           retlw d'1000'&h'ff'
+                          M 
+                      00418           power d'100'
+                          M 
+                          M           entry d'100'>>d'16'            ; high byte
+004A   0800               M           retlw d'100'>>d'16'
+                          M           entry (d'100'>>8)&h'ff'        ; middle byte
+004B   0800               M           retlw (d'100'>>8)&h'ff'
+                          M           entry d'100'&h'ff'             ; low byte
+004C   0864               M           retlw d'100'&h'ff'
+                          M 
+                      00419           power d'10'
+                          M 
+                          M           entry d'10'>>d'16'            ; high byte
+004D   0800               M           retlw d'10'>>d'16'
+                          M           entry (d'10'>>8)&h'ff'        ; middle byte
+004E   0800               M           retlw (d'10'>>8)&h'ff'
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 11
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                          M           entry d'10'&h'ff'             ; low byte
+004F   080A               M           retlw d'10'&h'ff'
+                          M 
+                      00420           power d'1'
+                          M 
+                          M           entry d'1'>>d'16'            ; high byte
+0050   0800               M           retlw d'1'>>d'16'
+                          M           entry (d'1'>>8)&h'ff'        ; middle byte
+0051   0800               M           retlw (d'1'>>8)&h'ff'
+                          M           entry d'1'&h'ff'             ; low byte
+0052   0801               M           retlw d'1'&h'ff'
+                          M 
+                      00421 
+                      00422 
+                      00423 ;**************************************************************************
+                      00424 ;                                                                         *
+                      00425 ; Procedures                                                              *
+                      00426 ;                                                                         *
+                      00427 ;**************************************************************************
+                      00428 
+                      00429 ;--------------------------------------------------------------------------
+                      00430 ; converts a character into LEDs data for the 7-segment displays, fed with
+                      00431 ; the character in w
+                      00432 ;--------------------------------------------------------------------------
+                      00433 
+                      00434 conv      macro LEDS,DP,display         ; macro for duplicate code
+                      00435 
+                      00436           movwf display                 ; save decimal point bit (msb)
+                      00437           andlw h'7f'                   ; mask bit
+                      00438           index LEDS                    ; index LEDs table
+                      00439           btfsc display,7
+                      00440           iorlw 1<<DP                   ; include decimal point
+                      00441           movwf display                 ; set display data register
+                      00442 
+                      00443           retlw 0
+                      00444 
+                      00445           endm
+                      00446 
+                      00447           routine conv_char0            ; display #0
+0053                      M conv_char0
+                      00448           conv LEDS0,DP0,display0
+                          M 
+0053   0039               M           movwf display0                 ; save decimal point bit (msb)
+0054   0E7F               M           andlw h'7f'                   ; mask bit
+                          M           index LEDS0                    ; index LEDs table
+0055   0900               M           call LEDS0
+0056   06F9               M           btfsc display0,7
+0057   0D80               M           iorlw 1<<DP0                   ; include decimal point
+0058   0039               M           movwf display0                 ; set display data register
+                          M 
+0059   0800               M           retlw 0
+                          M 
+                      00449 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 12
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00450           routine conv_char1            ; display #1
+005A                      M conv_char1
+                      00451           conv LEDS1,DP1,display1
+                          M 
+005A   003A               M           movwf display1                 ; save decimal point bit (msb)
+005B   0E7F               M           andlw h'7f'                   ; mask bit
+                          M           index LEDS1                    ; index LEDs table
+005C   090E               M           call LEDS1
+005D   06FA               M           btfsc display1,7
+005E   0D01               M           iorlw 1<<DP1                   ; include decimal point
+005F   003A               M           movwf display1                 ; set display data register
+                          M 
+0060   0800               M           retlw 0
+                          M 
+                      00452 
+                      00453           routine conv_char2            ; display #2
+0061                      M conv_char2
+                      00454           conv LEDS2,DP2,display2
+                          M 
+0061   003B               M           movwf display2                 ; save decimal point bit (msb)
+0062   0E7F               M           andlw h'7f'                   ; mask bit
+                          M           index LEDS2                    ; index LEDs table
+0063   091C               M           call LEDS2
+0064   06FB               M           btfsc display2,7
+0065   0D80               M           iorlw 1<<DP2                   ; include decimal point
+0066   003B               M           movwf display2                 ; set display data register
+                          M 
+0067   0800               M           retlw 0
+                          M 
+                      00455 
+                      00456           routine conv_char3            ; display #3
+0068                      M conv_char3
+                      00457           conv LEDS3,DP3,display3
+                          M 
+0068   003C               M           movwf display3                 ; save decimal point bit (msb)
+0069   0E7F               M           andlw h'7f'                   ; mask bit
+                          M           index LEDS3                    ; index LEDs table
+006A   092A               M           call LEDS3
+006B   06FC               M           btfsc display3,7
+006C   0D01               M           iorlw 1<<DP3                   ; include decimal point
+006D   003C               M           movwf display3                 ; set display data register
+                          M 
+006E   0800               M           retlw 0
+                          M 
+                      00458 
+                      00459 
+                      00460 ;--------------------------------------------------------------------------
+                      00461 ; counts pulses, fed with the number of loop iterations in 'counter',
+                      00462 ; returns the number of pulses in 'freq' (clock cycles in [])
+                      00463 ;--------------------------------------------------------------------------
+                      00464 
+                      00465           routine count_pulses
+006F                      M count_pulses
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 13
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00466 
+006F   006F           00467           clrf freq+0                   ; clear pulse counter
+0070   0070           00468           clrf freq+1
+0071   0071           00469           clrf freq+2
+                      00470 
+0072   006B           00471           clrf TMR0_                    ; initialise RTCC
+0073   0061           00472           clrf TMR0
+                      00473 
+0074   0000           00474           nop                           ; 2 instruction cycle delay
+0075   0000           00475           nop                           ; after writing to RTCC
+                      00476 
+                      00477 ; -- start of timing loop --
+                      00478 
+                      00479 ; the following timing loop must take CYCLES clock cycles in total per
+                      00480 ; iteration, therefore [80] + WAIT * [16] + [96] = [CYCLES]
+                      00481 
+  0000000E            00482 WAIT      equ  (CYCLES-d'80'-d'96')/d'16'
+                      00483 
+0076   0C19           00484 count1    movlw display0                ; use the indirection register [4]
+0077   01DD           00485           addwf disp_index,w            ; to get the LEDs data for the [4]
+0078   0024           00486           movwf FSR                     ; current 7-segment display [4]
+0079   0200           00487           movfw 0                       ; [4]
+                      00488 
+007A   0026           00489           movwf LEDS_PORT               ; set the LEDs [4]
+                      00490 
+007B   021D           00491           movfw disp_index              ; enable the current 7-segment [4]
+                      00492           index enable_table            ; display [8 + 8 + 8]
+007C   0938               M           call enable_table
+007D   0025           00493           movwf ENABLE_PORT             ; [4]
+                      00494 
+007E   02BE           00495           incf disp_timer               ; increment display timer [4]
+007F   06BE           00496           btfsc disp_timer,5            ; (5-bit prescaler) [8/4]
+0080   02BD           00497           incf disp_index               ; next display if rolled over [4]
+0081   04BE           00498           bcf disp_timer,5              ; [4]
+0082   045D           00499           bcf disp_index,2              ; ensure display index = 0 to 3 [4]
+                      00500 
+0083   0C0E           00501           movlw WAIT                    ; delay loop iterations [4]
+0084   002E           00502           movwf delay                   ; [4]
+                      00503 
+                      00504 ; the delay loop always takes the same number of cycles to execute [16],
+                      00505 ; including the last iteration of the loop
+                      00506 
+0085   0004           00507 count2    clrwdt                        ; clear watchdog timer [4]
+0086   02EE           00508           decfsz delay                  ; [4/8]
+0087   0A85           00509           goto count2                   ; [8]
+0088   0000           00510           nop                           ; [4]
+                      00511 
+                      00512 ; the following fragments of code always take the same number of clock
+                      00513 ; cycles to execute, irrespective of whether the skips take place or not
+                      00514 
+0089   0000           00515           nop                           ; [4]
+                      00516 
+008A   0201           00517           movfw TMR0                    ; least significant byte of [4]
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 14
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+008B   0031           00518           movwf freq+2                  ; pulse counter [4]
+                      00519 
+008C   0C01           00520           movlw 1                       ; determine if RTCC has rolled [4]
+008D   07EB           00521           btfss TMR0_,7                 ; over (rolled over if msb was [8/4]
+008E   0040           00522           clrw                          ; previously set and now isn't) [4]
+008F   06F1           00523           btfsc freq+2,7                ; [8/4]
+0090   0040           00524           clrw                          ; [4]
+                      00525 
+0091   01F0           00526           addwf freq+1                  ; increment high bytes of pulse [4]
+0092   0603           00527           skpnc                         ; counter if low byte rolled [8/4]
+0093   02AF           00528           incf freq+0                   ; over [4]
+                      00529 
+0094   06EF           00530           btfsc freq+0,7                ; overflow (freq > 7fffffh) ? [8/4]
+0095   0AAA           00531           goto count3                   ; branch if yes
+                      00532 
+0096   0211           00533           movfw freq+2                  ; save previous RTCC [4]
+0097   002B           00534           movwf TMR0_                   ; [4]
+                      00535 
+0098   022D           00536           tstf counter+1                ; decrement loop counter [4]
+0099   0643           00537           skpnz                         ; [8/4]
+009A   00EC           00538           decf counter+0                ; [4]
+009B   00ED           00539           decf counter+1                ; [4]
+                      00540 
+009C   020C           00541           movfw counter+0               ; counter = 0 ? [4]
+009D   010D           00542           iorwf counter+1,w             ; [4]
+009E   0743           00543           skpz                          ; [8/4]
+009F   0A76           00544           goto count1                   ; loop if not [8]
+                      00545 
+                      00546 ; -- end of timing loop --
+                      00547 
+00A0   0201           00548           movfw TMR0                    ; get final RTCC
+00A1   0031           00549           movwf freq+2
+                      00550 
+00A2   0C01           00551           movlw 1                       ; determine if RTCC has rolled
+00A3   07EB           00552           btfss TMR0_,7                 ; over (rolled over if msb was
+00A4   0040           00553           clrw                          ; previously set and now isn't)
+00A5   06F1           00554           btfsc freq+2,7
+00A6   0040           00555           clrw
+                      00556 
+00A7   01F0           00557           addwf freq+1                  ; increment high bytes of pulse
+00A8   0603           00558           skpnc                         ; counter if low byte rolled
+00A9   02AF           00559           incf freq+0                   ; over
+                      00560 
+00AA   0800           00561 count3    retlw 0
+                      00562 
+                      00563 
+                      00564 ;--------------------------------------------------------------------------
+                      00565 ; main entry point
+                      00566 ;--------------------------------------------------------------------------
+                      00567 
+                      00568           routine main_entry
+00AB                      M main_entry
+                      00569 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 15
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+00AB   0C00           00570           movlw PORTA_IO                ; initialise port A
+00AC   0005           00571           tris PORTA
+00AD   0065           00572           clrf PORTA
+                      00573 
+00AE   0C00           00574           movlw PORTB_IO                ; initialise port B
+00AF   0006           00575           tris PORTB
+00B0   0066           00576           clrf PORTB
+                      00577 
+00B1   007D           00578           clrf disp_index               ; initialise display index and
+00B2   007E           00579           clrf disp_timer               ; display timer
+                      00580 
+00B3   0C0C           00581           movlw TEST                    ; test all LED segments
+00B4   0953           00582           call conv_char0
+00B5   0C0C           00583           movlw TEST
+00B6   095A           00584           call conv_char1
+00B7   0C0C           00585           movlw TEST
+00B8   0961           00586           call conv_char2
+00B9   0C0C           00587           movlw TEST
+00BA   0968           00588           call conv_char3
+                      00589 
+00BB   0C07           00590           movlw b'000111'               ; display the test pattern
+00BC   0002           00591           option
+00BD   006C           00592           clrf counter+0
+00BE   006D           00593           clrf counter+1
+00BF   096F           00594           call count_pulses
+                      00595 
+00C0   0C0A           00596           movlw BLANK                   ; blank the display
+00C1   0953           00597           call conv_char0
+00C2   0C0A           00598           movlw BLANK
+00C3   095A           00599           call conv_char1
+00C4   0C0A           00600           movlw BLANK
+00C5   0961           00601           call conv_char2
+00C6   0C0A           00602           movlw BLANK
+00C7   0968           00603           call conv_char3
+                      00604 
+                      00605 
+                      00606 ;--------------------------------------------------------------------------
+                      00607 ; main loop
+                      00608 ;--------------------------------------------------------------------------
+                      00609 
+                      00610           routine main_loop
+00C8                      M main_loop
+                      00611 
+00C8   0C00           00612           movlw PORTA_IO                ; re-initialise ports
+00C9   0005           00613           tris PORTA
+00CA   0C00           00614           movlw PORTB_IO
+00CB   0006           00615           tris PORTB
+                      00616 
+  0000C350            00617 ITERS     equ  CLOCK/CYCLES             ; number of loop iterations
+                      00618 
+00CC   0004           00619           clrwdt                        ; source - transition on RTCC pin
+00CD   0C20           00620           movlw b'100000'               ; edge - low-to-high transition
+00CE   0002           00621           option                        ; prescaler - assigned to RTCC, 1:2
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 16
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00622 
+00CF   0C18           00623           movlw high (ITERS/8)          ; high byte
+00D0   002C           00624           movwf counter+0
+00D1   0C6A           00625           movlw low (ITERS/8)           ; low byte
+00D2   002D           00626           movwf counter+1
+                      00627 
+00D3   096F           00628           call count_pulses             ; count pulses for 1/8 s
+                      00629 
+00D4   0C04           00630           movlw 4                       ; multiply freq by 16 to adjust
+00D5   002C           00631           movwf counter                 ; for the prescaling (1:2) and
+00D6   0403           00632 loop1     clrc                          ; the timing period (1/8 s)
+00D7   0371           00633           rlf freq+2
+00D8   0370           00634           rlf freq+1
+00D9   036F           00635           rlf freq+0
+00DA   02EC           00636           decfsz counter
+00DB   0AD6           00637           goto loop1
+                      00638 
+00DC   022F           00639           tstf freq+0                   ; no loss of displayed accuracy
+00DD   0743 0AEE      00640           bnz loop2                     ; (4 significant digits) if the
+00DF   0C27           00641           movlw high d'10000'           ; error is 1 part in 10000
+00E0   0090           00642           subwf freq+1,w
+00E1   0603 0AEE      00643           bc loop2                      ; branch if freq > 10KHz
+                      00644 
+00E3   0C07           00645           movlw b'000111'               ; recommended by Microchip when
+00E4   0002           00646           option                        ; changing prescaler assignment
+00E5   0061           00647           clrf TMR0                     ; from RTCC to WDT
+                      00648 
+00E6   0C2F           00649           movlw b'101111'               ; source - transition on RTCC pin
+00E7   0002           00650           option                        ; edge - low-to-high transition
+00E8   0004           00651           clrwdt                        ; prescaler - not assigned to RTCC
+                      00652 
+00E9   0CC3           00653           movlw high ITERS              ; high byte
+00EA   002C           00654           movwf counter+0
+00EB   0C50           00655           movlw low ITERS               ; low byte
+00EC   002D           00656           movwf counter+1
+                      00657 
+00ED   096F           00658           call count_pulses             ; count pulses for 1 s
+                      00659 
+00EE   020F           00660 loop2     movfw freq+0                  ; underflow (freq = 0) ?
+00EF   0110           00661           iorwf freq+1,w
+00F0   0111           00662           iorwf freq+2,w
+00F1   0643 0B50      00663           bz freq_underflow             ; branch if yes
+                      00664 
+00F3   06EF           00665           btfsc freq+0,7                ; overflow (freq > 7fffffh) ?
+00F4   0B59           00666           goto freq_overflow            ; branch if yes
+                      00667 
+                      00668 
+                      00669 ;--------------------------------------------------------------------------
+                      00670 ; converts the frequency from 24-bit binary to decimal digits
+                      00671 ;--------------------------------------------------------------------------
+                      00672 
+                      00673           routine convert_freq
+00F5                      M convert_freq
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 17
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00674 
+00F5   0067           00675           clrf tens_index               ; initialise the table index
+                      00676 
+00F6   0C12           00677           movlw digits                  ; initialise the indirection
+00F7   0024           00678           movwf FSR                     ; register
+                      00679 
+00F8   0207           00680 conv1     movfw tens_index              ; fetch the next power of ten
+                      00681           index tens_table              ; (24 bits) from the lookup table
+00F9   093D               M           call tens_table
+00FA   0028           00682           movwf divi+0                  ; and store in divi
+00FB   02A7           00683           incf tens_index
+                      00684 
+00FC   0207           00685           movfw tens_index
+                      00686           index tens_table
+00FD   093D               M           call tens_table
+00FE   0029           00687           movwf divi+1
+00FF   02A7           00688           incf tens_index
+                      00689 
+0100   0207           00690           movfw tens_index
+                      00691           index tens_table
+0101   093D               M           call tens_table
+0102   002A           00692           movwf divi+2
+0103   02A7           00693           incf tens_index
+                      00694 
+0104   0060           00695           clrf 0                        ; clear the decimal digit
+                      00696 
+0105                  00697 conv2     sub24 freq,divi               ; repeatedly subtract divi from
+                          M 
+0105   020A               M           movfw divi+2                   ; subtract low byte
+0106   00B1               M           subwf freq+2
+                          M 
+0107   0209               M           movfw divi+1                   ; subtract middle byte
+                          M           subncwf freq+1
+                          M 
+  0000                    M           local sub1,sub2
+                          M 
+0108   0603 0B0F          M           bc sub1                       ; branch if carry set
+                          M 
+010A   00B0               M           subwf freq+1                       ; subtract byte
+                          M 
+010B   0643               M           skpnz                         ; subtract no carry
+010C   0403               M           clrc
+010D   00F0               M           decf freq+1
+                          M 
+010E   0B10               M           goto sub2
+                          M 
+010F   00B0               M sub1      subwf freq+1                       ; subtract byte
+                          M 
+0110                      M sub2
+                          M 
+0110   0208               M           movfw divi+0                   ; subtract high byte
+                          M           subncwf freq+0
+                          M 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 18
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+  0000                    M           local sub1,sub2
+                          M 
+0111   0603 0B18          M           bc sub1                       ; branch if carry set
+                          M 
+0113   00AF               M           subwf freq+0                       ; subtract byte
+                          M 
+0114   0643               M           skpnz                         ; subtract no carry
+0115   0403               M           clrc
+0116   00EF               M           decf freq+0
+                          M 
+0117   0B19               M           goto sub2
+                          M 
+0118   00AF               M sub1      subwf freq+0                       ; subtract byte
+                          M 
+0119                      M sub2
+                          M 
+0119   0703 0B1D      00698           bnc conv3                     ; freq (24-bit subtraction) until
+011B   02A0           00699           incf 0                        ; underflow while incrementing
+011C   0B05           00700           goto conv2                    ; the decimal digit
+                      00701 
+011D                  00702 conv3     add24 freq,divi               ; ready for next digit
+                          M 
+011D   020A               M           movfw divi+2                   ; add low byte
+011E   01F1               M           addwf freq+2
+                          M 
+011F   0209               M           movfw divi+1                   ; add middle byte
+                          M           addcwf freq+1
+                          M 
+  0000                    M           local add1,add2
+                          M 
+0120   0703 0B27          M           bnc add1                      ; branch if no carry set
+                          M 
+0122   01F0               M           addwf freq+1                       ; add byte
+                          M 
+0123   02B0               M           incf freq+1                        ; add carry
+0124   0643               M           skpnz
+0125   0503               M           setc
+                          M 
+0126   0B28               M           goto add2
+                          M 
+0127   01F0               M add1      addwf freq+1                       ; add byte
+                          M 
+0128                      M add2
+                          M 
+0128   0208               M           movfw divi+0                   ; add high byte
+                          M           addcwf freq+0
+                          M 
+  0000                    M           local add1,add2
+                          M 
+0129   0703 0B30          M           bnc add1                      ; branch if no carry set
+                          M 
+012B   01EF               M           addwf freq+0                       ; add byte
+                          M 
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 19
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+012C   02AF               M           incf freq+0                        ; add carry
+012D   0643               M           skpnz
+012E   0503               M           setc
+                          M 
+012F   0B31               M           goto add2
+                          M 
+0130   01EF               M add1      addwf freq+0                       ; add byte
+                          M 
+0131                      M add2
+                          M 
+                      00703 
+0131   02A4           00704           incf FSR                      ; step to next decimal digit
+                      00705 
+0132   0C15           00706           movlw 7*3                     ; 7 x 3-byte entries in the table
+0133   0087           00707           subwf tens_index,w
+0134   0743 0AF8      00708           bnz conv1                     ; loop until end of table
+                      00709 
+                      00710 
+                      00711 ;--------------------------------------------------------------------------
+                      00712 ; displays the frequency in decimal
+                      00713 ;--------------------------------------------------------------------------
+                      00714 
+                      00715           routine display_freq
+0136                      M display_freq
+                      00716 
+0136   05F5           00717           bsf digits+3,7                ; set the decimal point indicating
+                      00718                                         ; the frequency in KHz
+                      00719 
+                      00720 ; display the decimal digits according to the following rules:
+                      00721 
+                      00722 ; 000000A => "0.00A"
+                      00723 ; 00000AB => "0.0AB"
+                      00724 ; 0000ABC => "0.ABC"
+                      00725 ; 000ABCD => "A.BCD"
+                      00726 ; 00ABCDE => "AB.CD"
+                      00727 ; 0ABCDEF => "ABC.D"
+                      00728 ; ABCDEFG => "ABCD."
+                      00729 
+0137   0C12           00730           movlw digits                  ; find the first significant
+0138   0024           00731           movwf FSR                     ; digit by stepping over leading
+0139   0220           00732           tstf 0                        ; zeroes
+013A   0743 0B44      00733           bnz disp1
+013C   02A4           00734           incf FSR
+013D   0220           00735           tstf 0
+013E   0743 0B44      00736           bnz disp1
+0140   02A4           00737           incf FSR
+0141   0220           00738           tstf 0
+0142   0643           00739           skpnz
+0143   02A4           00740           incf FSR
+                      00741 
+0144   0200           00742 disp1     movfw 0                       ; convert the four digits to
+0145   0953           00743           call conv_char0               ; LED display data
+0146   02A4           00744           incf FSR
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 20
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+0147   0200           00745           movfw 0
+0148   095A           00746           call conv_char1
+0149   02A4           00747           incf FSR
+014A   0200           00748           movfw 0
+014B   0961           00749           call conv_char2
+014C   02A4           00750           incf FSR
+014D   0200           00751           movfw 0
+014E   0968           00752           call conv_char3
+                      00753 
+                      00754 
+014F   0AC8           00755           goto main_loop                ; end of main loop
+                      00756 
+                      00757 
+                      00758 ;--------------------------------------------------------------------------
+                      00759 ; frequency underflow (frequency < 1Hz)
+                      00760 ;--------------------------------------------------------------------------
+                      00761 
+                      00762           routine freq_underflow
+0150                      M freq_underflow
+                      00763 
+0150   0C0A           00764           movlw BLANK                   ; display underflow as "   0"
+0151   0953           00765           call conv_char0
+0152   0C0A           00766           movlw BLANK
+0153   095A           00767           call conv_char1
+0154   0C0A           00768           movlw BLANK
+0155   0961           00769           call conv_char2
+0156   0C00           00770           movlw 0
+0157   0968           00771           call conv_char3
+                      00772 
+0158   0AC8           00773           goto main_loop
+                      00774 
+                      00775 
+                      00776 ;--------------------------------------------------------------------------
+                      00777 ; frequency overflow (frequency > 8MHz)
+                      00778 ;--------------------------------------------------------------------------
+                      00779 
+                      00780           routine freq_overflow
+0159                      M freq_overflow
+                      00781 
+0159   0C0A           00782           movlw BLANK                   ; display overflow as "   E"
+015A   0953           00783           call conv_char0
+015B   0C0A           00784           movlw BLANK
+015C   095A           00785           call conv_char1
+015D   0C0A           00786           movlw BLANK
+015E   0961           00787           call conv_char2
+015F   0C0B           00788           movlw ERR
+0160   0968           00789           call conv_char3
+                      00790 
+0161   0AC8           00791           goto main_loop
+                      00792 
+                      00793 
+                      00794 ;--------------------------------------------------------------------------
+                      00795 ; reset vector
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 21
+
+
+LOC    OBJECT CODE    LINE  SOURCE TEXT
+  VALUE
+
+                      00796 ;--------------------------------------------------------------------------
+                      00797 
+01FF                  00798           org h'1ff'
+                      00799 
+01FF   0AAB           00800           goto main_entry
+                      00801 
+                      00802 
+                      00803           end
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 22
+
+
+SYMBOL TABLE
+  LABEL                             VALUE
+
+BLANK                             0000000A
+C                                 00000000
+CLOCK                             01312D00
+CYCLES                            00000190
+DC                                00000001
+DP0                               00000007
+DP1                               00000000
+DP2                               00000007
+DP3                               00000000
+ENABLE0                           00000001
+ENABLE1                           00000000
+ENABLE2                           00000002
+ENABLE3                           00000003
+ENABLE_PORT                       00000005
+ERR                               0000000B
+F                                 00000001
+FSR                               00000004
+INDF                              00000000
+ITERS                             0000C350
+LEDS0                             00000000
+LEDS1                             0000000E
+LEDS2                             0000001C
+LEDS3                             0000002A
+LEDS_PORT                         00000006
+NOT_PD                            00000003
+NOT_TO                            00000004
+PA0                               00000005
+PA1                               00000006
+PA2                               00000007
+PCL                               00000002
+PORTA                             00000005
+PORTA_IO                          00000000
+PORTB                             00000006
+PORTB_IO                          00000000
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+STATUS                            00000003
+T0CS                              00000005
+T0SE                              00000004
+TEST                              0000000C
+TIME                              00000014
+TMR0                              00000001
+TMR0_                             0000000B
+W                                 00000000
+WAIT                              0000000E
+Z                                 00000002
+_CP_OFF                           00000FFF
+_CP_ON                            00000FF7
+_HS_OSC                           00000FFE
+_LP_OSC                           00000FFC
+_RC_OSC                           00000FFF
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 23
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_WDT_OFF                          00000FFB
+_WDT_ON                           00000FFF
+_XT_OSC                           00000FFD
+__16C54                           00000001
+__CODE_END                        000001FF
+__CODE_START                      00000000
+__VECTOR_RESET                    00000000
+add24                             
+addcwf                            
+conv                              
+conv1                             000000F8
+conv2                             00000105
+conv3                             0000011D
+conv_char0                        00000053
+conv_char1                        0000005A
+conv_char2                        00000061
+conv_char3                        00000068
+convert_freq                      000000F5
+count1                            00000076
+count2                            00000085
+count3                            000000AA
+count_pulses                      0000006F
+counter                           0000000C
+delay                             0000000E
+digits                            00000012
+disp1                             00000144
+disp_index                        0000001D
+disp_timer                        0000001E
+display0                          00000019
+display1                          0000001A
+display2                          0000001B
+display3                          0000001C
+display_freq                      00000136
+divi                              00000008
+enable_table                      00000038
+entry                             
+freq                              0000000F
+freq_overflow                     00000159
+freq_underflow                    00000150
+index                             
+loop1                             000000D6
+loop2                             000000EE
+main_entry                        000000AB
+main_loop                         000000C8
+power                             
+routine                           
+sub24                             
+subncwf                           
+table                             
+tens_index                        00000007
+tens_table                        0000003D
+
+
+gpasm-1.4.0 #1107 (Jan  1 2021)  frqmeter.asm   8-16-2025  23:04:16         PAGE 24
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+0000 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0080 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+00C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0100 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0140 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XX-------------- ----------------
+01C0 : ---------------- ---------------- ---------------- ---------------X
+0200 : XXXX------------ ---------------- ---------------- ----------------
+0FC0 : ---------------- ---------------- ---------------- ---------------X
+
+All other memory blocks unused.
+
+Program Memory Words Used:   355
+Program Memory Words Free:   157
+
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     0 reported,    44 suppressed
+
+
