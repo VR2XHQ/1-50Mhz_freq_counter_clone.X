@@ -97,6 +97,15 @@ pk2cmd -PPIC16F628A -R
 ```
 
 
+## 一些發現及修正
+事實上 DL4YHF 版本存在幾點問題，這裏是[修改的代碼](assets/Other_code/counter_mod.asm)及[生成的固件](assets/Other_code/counter_mod.hex)，兩者[分別在於此](assets/Other_code/org_vs_mod.txt)。當然關於 EEPROM 部份，因為採用了 gpasm。順便修改其他幾個代碼，並且燒寫驗証。及收進 HO_RO 的一個[版本](assets/Other_code/counter_ho_ro.asm)，亦一並修正IF_TABLE掉失的那一行。唯有 SQ3NQJ 版本有補回這一行，相信他在增加選單上 PreScaler 設定時，才發現這 bug。至於這倉庫的版本，不修改了，當成一個曆史記錄就好。
+
+```bash
+gpasm -D DISPLAY_VARIANT_2 -p pic16f628 -o counter_mod.hex counter_mod.asm 
+pk2cmd -PPIC16F628A -Fcounter_mod.hex -E -M -Y
+pk2cmd -PPIC16F628A -R
+```
+
 ## 倉庫的目錄結構
 ```text
 1-50Mhz_freq_counter_clone.X/

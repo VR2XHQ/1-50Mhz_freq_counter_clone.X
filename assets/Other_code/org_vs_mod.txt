@@ -1,0 +1,45 @@
+beny@Klevv-R1:~/Downloads$ diff -u counter_mod.asm ~/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/DL4YHF_freq_counter/counter.asm 
+--- counter_mod.asm	2025-08-30 19:19:26.996178695 +0800
++++ /home/beny/MPLABXProjects/1-50Mhz_freq_counter_clone.X/assets/DL4YHF_freq_counter/counter.asm	2020-08-06 13:24:37.417584000 +0800
+@@ -57,8 +57,7 @@
+   #define DISP_VARIANT 4
+   #define COMMON_ANODE   0
+   #define COMMON_CATHODE 1
+-  ; 大部份改進版本都沒修正這行，難道他們編繹時都不出錯？
+-  ; "Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
++  "Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
+   ; With MPLAB: Project..Build Options..Project..MPASM..Macro Definitions..Add
+ #endif
+ #endif
+@@ -368,12 +367,11 @@
+ #define EEPROM_ADR_STD_IF_TABLE 0x04  ; EEPROM location for standard IF table (4*4 byte)
+ #define EEPROM_ADR_OPTIONS      0x20  ; EEPROM location for "options" (flags)
+ 
+-; 使用 gpasm 編繹要修改成 2*，相信以 MPLAB IDE 生成 hex 時是自動調整了。
+ ; Initial contents of DATA EEPROM:
+- org (0x2100+2*EEPROM_ADR_FREQ_OFFSET)  
++ org (0x2100+EEPROM_ADR_FREQ_OFFSET)  
+     eep_dw   .0        ; [00..03] initial frequency offset = ZERO
+ 
+- org (0x2100+2*EEPROM_ADR_STD_IF_TABLE)  ;  standard IF table ...
++ org (0x2100+EEPROM_ADR_STD_IF_TABLE)  ;  standard IF table ...
+     eep_dw   .455000   ; [04..07] frequently used in old AM radios 
+     eep_dw  .3999000   ; [08..0B] used in "Miss Mosquita" (DK1HE / DL QRP AG)
+     eep_dw  .4194304   ; [0C..0F] used in other homebrew amateur radio receivers
+@@ -381,7 +379,7 @@
+     eep_dw .10700000   ; [14..17] frequently used in old FM radios
+                        ; [18..1F] reserved for other "preprogrammed" values
+ 
+- org (0x2100+2*EEPROM_ADR_OPTIONS)
++ org (0x2100+EEPROM_ADR_OPTIONS)
+     de      .0         ; [20]     "options" (flags), cleared by default
+ 
+ 
+@@ -764,8 +762,6 @@
+           goto   PmExec_SelIF ; select 2nd standard IF from table
+           goto   PmExec_SelIF ; select 3rd standard IF from table
+           goto   PmExec_SelIF ; select 4th standard IF from table
+-          ; 源碼漏了這行，令無法設定最後一個IF。
+-          goto   PmExec_SelIF ; select 5th standard IF from table
+           goto   PmExec_Quit ; quit STANDARD IF menu
+           ; Add more jumps here if needed !

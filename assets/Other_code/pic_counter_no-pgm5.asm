@@ -8,7 +8,7 @@
 ;**************************************************************************
 ; FILE:      C:\PIC\freq_counter\pic_counter_no-pgm5.asm                  *
 ; CONTENTS:  Simple low-cost digital frequency meter using a PIC16F628A   *
-; AUTHOR:    Wolfgang "Wolf" Büscher, DL4YHF                              *
+; AUTHOR:    Wolfgang "Wolf" Bï¿½scher, DL4YHF                              *
 ;            (based on a work by James Hutchby, MadLab, 1996)             *
 ; EDITED:    Harry Lythall, SM0VPO                                        *
 ;            (old authors comments left in the file)                      *
@@ -43,7 +43,7 @@
   #define DISP_VARIANT 4
   #define COMMON_ANODE   0
   #define COMMON_CATHODE 1
-  "Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
+  ;"Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
   ; With MPLAB: Project..Build Options..Project..MPASM..Macro Definitions..Add
 #endif
 #endif
@@ -261,11 +261,11 @@ eep_dw  macro value  ; a DOUBLEWORD split into 4 bytes in the PIC's DATA EEPROM
 #define EEPROM_ADR_OPTIONS      0x20  ; EEPROM location for "options" (flags)
 
 ; Initial contents of DATA EEPROM:
- org (0x2100+EEPROM_ADR_FREQ_OFFSET)  
+ org (0x2100+2*EEPROM_ADR_FREQ_OFFSET)  
     eep_dw   .0        ; [00..03] initial frequency offset = zero
 ;    eep_dw   .4294512295        ; [00..03] initial frequency offset = -455kHz
 
- org (0x2100+EEPROM_ADR_STD_IF_TABLE)  ;  standard IF table ...
+ org (0x2100+2*EEPROM_ADR_STD_IF_TABLE)  ;  standard IF table ...
     eep_dw   .455000   ; [04..07] frequently used in old AM radios 
     eep_dw  .3999000   ; [08..0B] used in "Miss Mosquita" (DK1HE / DL QRP AG)
     eep_dw  .4194304   ; [0C..0F] used in other homebrew amateur radio receivers
@@ -273,7 +273,7 @@ eep_dw  macro value  ; a DOUBLEWORD split into 4 bytes in the PIC's DATA EEPROM
     eep_dw .10700000   ; [14..17] frequently used in old FM radios
                        ; [18..1F] reserved for other "preprogrammed" values
 
- org (0x2100+EEPROM_ADR_OPTIONS)
+ org (0x2100+2*EEPROM_ADR_OPTIONS)
     de      .0         ; [20]     "options" (flags), cleared by default
 
 

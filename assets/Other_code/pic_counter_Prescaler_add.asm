@@ -59,7 +59,7 @@
   #define DISP_VARIANT 4
   #define COMMON_ANODE   0
   #define COMMON_CATHODE 1
-  "Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
+  ;"Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
   ; With MPLAB: Project..Build Options..Project..MPASM..Macro Definitions..Add
 #endif
 #endif
@@ -384,10 +384,10 @@ eep_dw  macro value  ; a DOUBLEWORD split into 4 bytes in the PIC's DATA EEPROM
 #define EEPROM_ADR_PRESCALER    0x40  ; EEPROM location for prescaler
 
 ; Initial contents of DATA EEPROM:
- org (0x2100+EEPROM_ADR_FREQ_OFFSET)  
+ org (0x2100+2*EEPROM_ADR_FREQ_OFFSET)  
     eep_dw   .0        ; [00..03] initial frequency offset = ZERO
 
- org (0x2100+EEPROM_ADR_STD_IF_TABLE)  ;  standard IF table ...
+ org (0x2100+2*EEPROM_ADR_STD_IF_TABLE)  ;  standard IF table ...
     eep_dw   .455000   ; [04..07] frequently used in old AM radios 
     eep_dw  .3999000   ; [08..0B] used in "Miss Mosquita" (DK1HE / DL QRP AG)
     eep_dw  .4194304   ; [0C..0F] used in other homebrew amateur radio receivers
@@ -395,10 +395,10 @@ eep_dw  macro value  ; a DOUBLEWORD split into 4 bytes in the PIC's DATA EEPROM
     eep_dw .10700000   ; [14..17] frequently used in old FM radios
                        ; [18..1F] reserved for other "preprogrammed" values
 
- org (0x2100+EEPROM_ADR_OPTIONS)
+ org (0x2100+2*EEPROM_ADR_OPTIONS)
     de      .0         ; [20]     "options" (flags), cleared by default
 
- org (0x2100+EEPROM_ADR_STD_PS_TABLE)  ;  standard IF table ...
+ org (0x2100+2*EEPROM_ADR_STD_PS_TABLE)  ;  standard IF table ...
     eep_dw  .1          ; [24..27] no prescaler
     eep_dw  .2          ; [28..2B] external prescaler by 2
     eep_dw  .8          ; [2C..2F] external prescaler by 8
@@ -406,8 +406,8 @@ eep_dw  macro value  ; a DOUBLEWORD split into 4 bytes in the PIC's DATA EEPROM
     eep_dw  .128        ; [34..37] external prescaler by 128
                         ; [38..3F] reserved for other "preprogrammed" values
 
- org (0x2100+EEPROM_ADR_PRESCALER)  
-    de   .0        ; [40..40] initial prescaler = ZERO
+; org (0x2100+EEPROM_ADR_PRESCALER)  
+;    de   .0        ; [40..40] initial prescaler = ZERO
 
 ;**************************************************************************
 ;                                                                         *

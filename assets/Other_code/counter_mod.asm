@@ -1,13 +1,3 @@
-; Program modified by F8FII to add a sixth digit
-; Only valid for common cathode version
-; For traceability, all mods are followed by F8FII as comment
-; Decimal point is now hard wired
-; RB1, former decimal point pin is used to activate the sixth digit
-; Additionnal digit, tens of MHz, is in display99
-; Display is forced in tenth on MHz
-
-
-
 ;**************************************************************************
 ; FILE:      C:\PIC\freq_counter\counter1.asm                             *
 ; CONTENTS:  Simple low-cost digital frequency meter using a PIC 16F628   *
@@ -43,7 +33,7 @@
  #define DEBUG 0         ; DEBUG=1 for simulation, DEBUG=0 for real hardware
 
 ; Selection of LED display control bits... since 2005, three different variants.
-; Select ONE OF THESE in MPLAB under "Project".."Bui ld Options".."Macro Definitions"!
+; Select ONE OF THESE in MPLAB under "Project".."Build Options".."Macro Definitions"!
 ;  DISP_VARIANT=1  :   first prototype, PIC on left side of display
 ;  DISP_VARIANT=2  :   second prototype, separated PIC and display board
 ;  DISP_VARIANT=3  :   similar as (2), but for COMMON CATHODE display
@@ -67,7 +57,8 @@
   #define DISP_VARIANT 4
   #define COMMON_ANODE   0
   #define COMMON_CATHODE 1
-  ;"Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
+  ; 大部份改進版本都沒修正這行，難道他們編繹時都不出錯？
+  ; "Error, Must define DISPLAY_VARIANT_1, .._2, or .._3 under project options"
   ; With MPLAB: Project..Build Options..Project..MPASM..Macro Definitions..Add
 #endif
 #endif
@@ -230,7 +221,7 @@ CYCLES    equ  TIME*CLOCK/.1000000
 
 GATE_TIME_LOOPS equ  CLOCK/CYCLES       ; number of gate-time loops for ONE SECOND gate time
 
-LAMPTEST_LOOPS  equ  CLOCK/(.1*CYCLES)  ; number of loops for a 0.5 SECOND lamp test after power-on Modified from .2 to .1 to increase call display f8fii
+LAMPTEST_LOOPS  equ  CLOCK/(.2*CYCLES)  ; number of loops for a 0.5 SECOND lamp test after power-on
 
 PROGMODE_LOOPS  equ  CLOCK/(.10*CYCLES) ; number of delay loops for display in PROGRAMMING MODE (0.1 sec)
 
@@ -333,19 +324,18 @@ digit_6        equ  0x46      ; usually the 10-Hz-digit
 digit_7        equ  0x47      ; usually the 1-Hz-digit
 digit_8        equ  0x48      ; must contain a blank character (or trailing zero)
 
-display99	   equ  0x49 	; F8FII first digit data
-display0       equ  0x4A      ; display #0 data
-display1       equ  0x4B      ; display #1 data
-display2       equ  0x4C      ; display #2 data
-display3       equ  0x4D      ; display #3 data
-display4       equ  0x4E      ; display #4 data
+display0       equ  0x49      ; display #0 data
+display1       equ  0x4A      ; display #1 data
+display2       equ  0x4B      ; display #2 data
+display3       equ  0x4C      ; display #3 data
+display4       equ  0x4D      ; display #4 data
 
-disp_index     equ  0x4F      ; index of the enabled display (0 to 4 for 5-digit display)
-disp_timer     equ  0x50      ; display multiplex timer (5 bits)
+disp_index     equ  0x4E      ; index of the enabled display (0 to 4 for 5-digit display)
+disp_timer     equ  0x4F      ; display multiplex timer (5 bits)
 
-adjust_shifts  equ  0x51      ; count of 'left shifts' to compensate prescaler+gate time
+adjust_shifts  equ  0x50      ; count of 'left shifts' to compensate prescaler+gate time
 
-blinker        equ  0x56      ; prescaler for the flashing 1-kHz-dot F8FII end of memory shift
+blinker        equ  0x51      ; prescaler for the flashing 1-kHz-dot
 
 psave_timer    equ  0x52      ; timer for power-save mode (incremented every 0.25 seconds)
 psave_freq_lo  equ  0x53      ; low-byte of frequency to detect changes for power-save mode
@@ -354,8 +344,6 @@ psave_flags    equ  0x54      ; power-saving flags with the following bits:
 
 options        equ  0x55      ; display options with the following flag-bits:
 #define OPT_PWRSAVE options,0 ; clear:normal mode,  set:power-saving mode enabled
-
-
 
 ;**************************************************************************
 ;                                                                         *
@@ -380,6 +368,7 @@ eep_dw  macro value  ; a DOUBLEWORD split into 4 bytes in the PIC's DATA EEPROM
 #define EEPROM_ADR_STD_IF_TABLE 0x04  ; EEPROM location for standard IF table (4*4 byte)
 #define EEPROM_ADR_OPTIONS      0x20  ; EEPROM location for "options" (flags)
 
+; 使用 gpasm 編繹要修改成 2*，相信以 MPLAB IDE 生成 hex 時是自動調整了。
 ; Initial contents of DATA EEPROM:
  org (0x2100+2*EEPROM_ADR_FREQ_OFFSET)  
     eep_dw   .0        ; [00..03] initial frequency offset = ZERO
@@ -700,7 +689,6 @@ Digit2MuxValue:     ;
           retlw b'11111111'        ; 5th (OPTIONAL) least significant digit = NOT (PA3+PA2+PA1+PA0)
 #endif   ; DISPLAY VARIANT #1
 #if (DISP_VARIANT==2)  ; muliplexer values for DISPLAY VARIANT #2 (5 digits, COMMON CATHODE) :
-          retlw b'11111111'        ; F8FII like 5th digit, activation will be from digital point
           retlw b'11110111'        ; most significant digit is on   PA3 (!)
           retlw b'11111011'        ; next less significant dig. on  PA2 (!!)
           retlw b'11111110'        ; next less significant dig. on  PA0 (!!)
@@ -776,6 +764,7 @@ PMExecute:   ; Execute the function belonging to menu_index
           goto   PmExec_SelIF ; select 2nd standard IF from table
           goto   PmExec_SelIF ; select 3rd standard IF from table
           goto   PmExec_SelIF ; select 4th standard IF from table
+          ; 源碼漏了這行，令無法設定最後一個IF。
           goto   PmExec_SelIF ; select 5th standard IF from table
           goto   PmExec_Quit ; quit STANDARD IF menu
           ; Add more jumps here if needed !
@@ -927,8 +916,7 @@ conv      macro display                 ; macro for duplicate code
           movwf display                 ; save decimal point bit (msb)
           andlw 7fh                     ; mask bit
           call  Digit2SevenSeg          ; convert digit into 7-segment-code via table
-          ; btfsc display,7               ; check bit 7 = decimal point ? F8FII  deactivated to always include 
-			; decimal point to get RB1 set to switch off first digit
+          btfsc display,7               ; check bit 7 = decimal point ?
 #if(COMMON_CATHODE)
           iorlw 1<<DPPOINT_BIT          ; include decimal point if bit 7 set (bitwise OR)
 #else  ; not COMMON CATHODE but COMMON ANODE: decimal point must be 'AND'ed to pattern:
@@ -936,12 +924,6 @@ conv      macro display                 ; macro for duplicate code
 #endif
           movwf display                 ; set display data register
           endm
-
-conv_char99:   ; F8FII display first (additionnal) digit
-          conv display99                
-		  	movlw b'11111101' ;  F8FII clears bit 2, decimal point, to activate first digit
-			andwf display99, 1
-          retlw 0
 
 conv_char0:   ; display digit #0  (leftmost, or MOST SIGNIFICANT digit)
           conv  display0
@@ -969,7 +951,6 @@ conv_char4:   ; display #4  (rightmost, or LEAST SIGNIFICANT digit, "ones")
 ;--------------------------------------------------------------------------
 ClearDisplay:
           movlw BLANK_PATTERN
-          movwf display99   ;F8FII
           movwf display0
           movwf display1
           movwf display2
@@ -1114,7 +1095,7 @@ count_pulses:
 count1    movfw disp_index              ; [1] get the current digit number (disp_index = 0..4)
           call  Digit2MuxValue          ; [2,3,4,5,6,7] display (6 commands including call+retlw)
           movwf bTemp                   ; [8] save the bit pattern for the multiplexer port
-          movlw display99                ; [9]  get the LED display data for the current digit... F8FII from display0 to display99
+          movlw display0                ; [9]  get the LED display data for the current digit...
           addwf disp_index,w            ; [10] add current digit number to address of LED data
           movwf FSR                     ; [11] move address into the PIC's poor 'data pointer'
           movfw INDF                    ; [12] w := *(FSR) use indirection register to read from table
@@ -1127,7 +1108,7 @@ count1    movfw disp_index              ; [1] get the current digit number (disp
           incf  disp_index,f            ; [18] next display if rolled over
           bcf   disp_timer,6            ; [19] limit disp_timer to 6 bits (!)
           movfw disp_index              ; [20] limit display index to  0...4
-          sublw .5                      ; [21] subtract #4 - W register -> C=0(!) if result negative (W>4) F8FII .4 to .5 for six digits
+          sublw .4                      ; [21] subtract #4 - W register -> C=0(!) if result negative (W>4)
           btfss STATUS,C                ; [22] skip next instruction if C=1 (#4-W >= 0)
           clrf  disp_index              ; [23] if C=0 (disp_index>4) then disp_index=0
 
@@ -1309,7 +1290,6 @@ display_freq:
           movlw digits                  ; find the first significant digit..
           movwf FSR                     ; .. by stepping over leading zeroes
           tstf  INDF                    ; INDF = *(FSR) in "C" syntax, FSR points to 'digits'
-	goto	displ_MHz			; Display 10 MHz forced, skipping all tests f8fii
           bnz   displ_MHz               ; 10-MHz-digit non-zero, show frequency in MHz
           incf  FSR  ,  f               ; otherwise skip 1st digit (the 10-MHz place)
           tstf  INDF
@@ -1333,11 +1313,6 @@ displ_MHz:   ; insert a BLINKING POINT to indicate the kilohertz-digit
          
 
 display:  ; Show the FIVE digits beginning at INDF = *(FSR) on the LED display...
-
-          movfw  INDF                   ; convert the four digits to
-          call   conv_char99             ; F8FII display first digit
-          incf   FSR  ,  f              ; increment pointer to next digit
-
           movfw  INDF                   ; convert the four digits to
           call   conv_char0             ; LED display data
           incf   FSR  ,  f              ; increment pointer to next digit
@@ -1402,18 +1377,6 @@ MainInit:
           movlw TEST
           call  conv_char4
 
-          movlw BLANK_PATTERN
-          movwf display99   ;F8FII
-          movlw CHAR_F                    ; Display F8FII at startup
-          call  conv_char0
-          movlw 8
-          call  conv_char1
-          movlw CHAR_F
-          call  conv_char2
-          movlw CHAR_I
-          call  conv_char3
-          movlw CHAR_I
-          call  conv_char4
 
           movlw PSC_DIV_BY_256          ; let the prescaler divide by 256 while testing..
           call  SetPrescaler            ; safely write <W> into option register
@@ -1831,9 +1794,6 @@ CheckProgMode:
 ;--------------------------------------------------------------------------
 
 freq_underflow:
-
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw BLANK                   ; display underflow as "   0[0]"
           call conv_char0               
           movlw BLANK
@@ -1853,8 +1813,6 @@ freq_underflow:
 ;--------------------------------------------------------------------------
 
 freq_overflow:
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  BLANK                   ; display overflow as "   E"
           call   conv_char0
           movlw  BLANK
@@ -1886,8 +1844,6 @@ ProgModeDisplay   ; Subroutine to update the LED display in programming mode + d
           goto   count_pulses   ; update mux display + some delay + return
 
 PmDisp_Quit: ; show "quit" on first 4 digits (quit programming mode)
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_Q
           call   conv_char0
           movlw  CHAR_u
@@ -1903,8 +1859,6 @@ PmDisp5:  call   conv_char4
 PmDisp_PSave: ; show "PSave" or "Pnorm", depending on power-save flag
           btfss  OPT_PWRSAVE    ; Power-save mode active ?
           goto   PMD_NoPwSave   
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_P         ; if so, print "PSAVE"..
           call   conv_char0
           movlw  CHAR_S
@@ -1916,8 +1870,6 @@ PmDisp_PSave: ; show "PSave" or "Pnorm", depending on power-save flag
           movlw  CHAR_E
           goto   PmDisp5
 PMD_NoPwSave:                   ; else print "NoPSV"
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_N
           call   conv_char0
           movlw  CHAR_o
@@ -1930,8 +1882,6 @@ PMD_NoPwSave:                   ; else print "NoPSV"
           goto   PmDisp5
 
 PmDisp_Add:  ; show "Add " on first 4 digits (add frequency offset)
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_A
           call   conv_char0
           movlw  CHAR_d
@@ -1941,8 +1891,6 @@ PmDisp_Add:  ; show "Add " on first 4 digits (add frequency offset)
           movlw  BLANK
           goto   PmDisp4
 PmDisp_Sub:  ; show "Sub " on first 4 digits (subtract frequency offset)
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_S
           call   conv_char0
           movlw  CHAR_u
@@ -1952,8 +1900,6 @@ PmDisp_Sub:  ; show "Sub " on first 4 digits (subtract frequency offset)
           movlw  BLANK
           goto   PmDisp4
 PmDisp_Zero: ; show "Zero" on first 4 digits (set frequency offset to zero)
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_Z
           call   conv_char0
           movlw  CHAR_E
@@ -1963,8 +1909,6 @@ PmDisp_Zero: ; show "Zero" on first 4 digits (set frequency offset to zero)
           movlw  CHAR_o
           goto   PmDisp4
 PmDisp_StIF: ; show "taBLE" on first 4 digits (select standard IF)
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_t
           call   conv_char0
           movlw  CHAR_A
@@ -2065,8 +2009,6 @@ EnterProgLoop:
           clrf   menu_index
 
        ; Show "Prog" on the display
-          movlw BLANK			;F8FII
-          call conv_char99		;F8FII
           movlw  CHAR_P
           call   conv_char0
           movlw  CHAR_r
