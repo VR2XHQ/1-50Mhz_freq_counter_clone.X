@@ -106,6 +106,18 @@ pk2cmd -PPIC16F628A -Fcounter_mod.hex -E -M -Y
 pk2cmd -PPIC16F628A -R
 ```
 
+## 增補無聊的實驗研究
+手上有一塊PIC16F877A學習板[HJ-5G](https://github.com/VR2XHQ/HJ-5G.X)，嘗試[修改代碼](assets/Other_code/counter_mod_HJ-5G.asm)來配合生成[固件](assets/Other_code/counter_mod_HJ-5G.hex)，借用仿品頻率計的放大部份，導入1KHz來驗証，[勉強算成功了](assets/HJ-5G_2.png)。袛為實驗，沒有實用性。
+
+硬件上的差異，利用代碼修改來配合，大致內容如下：
+- HJ-5G用4MHz晶振，直接以DISPLAY_VARIANT_1來修改。
+- 段碼改由PORTD來驅動，並且更改對應的顯示腳位。
+- 原來是以RA5為設置按鍵，改為使用RB1。
+- EEPROM操作要選 bank 2 及 bank 3。
+- LSB位直接用RA0來選管作顯示，其餘使用RA5,RA3,RA2,RA1。
+- 由於HJ-5G硬件連接是 RA4(TMR0) 作為數碼管的驅動，令無法直接套用，袛能[棄用該管作顯示](assets/HJ-5G_1.png)。HJ-5G的選管經過ULN2003A反相，GPIO高位時顯示，RA4位亦有上拉電阻，所以要改為下沿觸發計頻。因此，連接的那個數碼管無法完全熄掉。
+
+
 ## 倉庫的目錄結構
 ```text
 1-50Mhz_freq_counter_clone.X/
